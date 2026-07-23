@@ -1,0 +1,3 @@
+[submodule "engine/ledgermind"]
+	path = engine/ledgermind
+	url = https://github.com/Kairose-master/ai-agent-credit-dashboard
