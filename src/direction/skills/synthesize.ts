@@ -39,6 +39,7 @@
  */
 import type { Fork } from '../../types.js'
 import type { SkillResult } from './contract.js'
+import { complete } from '../../llm.js'
 
 export interface DecisionGroupMember {
   skillId: string
@@ -218,4 +219,161 @@ export function synthesize(results: SkillResult[]): SynthesisResult {
   )
 
   return { verdict, decisionGroups, supportingConcerns, specialistAttribution, unresolvedQuestions }
+}
+
+// --- Cross-specialist relationship classification (Epic 2.8) ---------------
+//
+// Extends the Minimum Honest Synthesizer with exactly one new capability:
+// classifying how members of an already-formed DecisionGroup relate to each
+// other. This does NOT change synthesize() above in any way — decision
+// groups, concerns, attribution, and disclosure are all built exactly as
+// before, by the exact same unmodified code. Relationship classification is
+// a separate, additive step that reads a DecisionGroup's existing members
+// (never rewritten) and asks one narrow question: agreement, complementary,
+// tension, or contradiction? It never resolves which position is right,
+// never scores confidence, never ranks or votes, and never invents a
+// winner — the Relationship type has exactly four fields, none of them a
+// verdict on which specialist to believe.
+//
+// This is the one place in the Synthesizer that calls a model (reusing the
+// existing seam, `complete()` from ../../llm.js — no new model-calling
+// machinery, same pattern as engine/grading.ts's narrow judge call).
+// Classifying a *relationship* between existing statements is judgment a
+// mechanical token-overlap check cannot honestly make — unlike clustering,
+// where "do these share vocabulary" is a defensible proxy for "are these
+// about the same decision," agreement vs. tension vs. contradiction is a
+// real semantic distinction a lexical check would have to fake. Fails
+// closed: an unparseable or invalid classification is omitted for that
+// group only, never fabricated — the underlying DecisionGroup and its
+// members are completely unaffected either way.
+export type RelationshipKind = 'agreement' | 'complementary' | 'tension' | 'contradiction'
+
+export interface Relationship {
+  kind: RelationshipKind
+  /** The specialists involved — at least 2, distinct. */
+  skillIds: string[]
+  /** Which DecisionGroup (by its label) this relationship concerns. */
+  decisionGroupLabel: string
+  /** Concise, model-provided reasoning — describes the relationship, never a recommendation. */
+  explanation: string
+}
+
+/** SynthesisResult plus relationships — additive only; every existing field
+ * is untouched. Produced by synthesizeWithRelationships, never by
+ * synthesize() itself. */
+export interface SynthesisResultWithRelationships extends SynthesisResult {
+  relationships: Relationship[]
+}
+
+const RELATIONSHIP_SYSTEM = `You are classifying how independent specialists' perspectives on ONE shared
+decision relate to each other. You are given several specialists' own forks
+(question + options + which they recommend) about what has already been
+determined to be the same underlying decision. Classify the relationship
+between them as EXACTLY ONE of four kinds:
+
+- "agreement": the specialists independently support materially compatible
+  directions, for substantially the same reason or outcome.
+- "complementary": the specialists discuss the same underlying decision from
+  different, non-competing angles — neither position competes with the
+  other; they answer different sub-questions of the same decision.
+- "tension": the specialists optimize for different values and lean toward
+  different directions, but both positions could still coexist or be
+  reconciled by a later decision — this is not a hard conflict.
+- "contradiction": two claims cannot both be true, or two recommendations
+  cannot both be adopted under the stated constraints. Use this
+  conservatively — a mere wording difference or a different emphasis is NOT
+  a contradiction.
+
+When genuinely uncertain between two adjacent classes, prefer the weaker,
+more conservative one: prefer "complementary" over "agreement" if unsure
+they truly agree for the same reason; prefer "tension" over "contradiction"
+if unsure they are truly incompatible.
+
+You are NOT deciding which specialist is right. Never say one should win,
+never rank them, never assign a confidence score or severity. Your only job
+is to name the relationship and explain it in one or two sentences, citing
+what each specialist actually said.
+
+Respond with ONLY a JSON object, no prose, matching exactly:
+{ "kind": "agreement" | "complementary" | "tension" | "contradiction", "explanation": "one or two sentences" }`
+
+function renderGroupForClassification(group: DecisionGroup): string {
+  return group.members
+    .map(
+      (m) =>
+        `SPECIALIST: ${m.skillId}\nQUESTION: ${m.fork.question}\nOPTIONS:\n${m.fork.options
+          .map((o) => `  - [${o.id}] ${o.label} (${o.tradeoff})`)
+          .join('\n')}\nRECOMMENDS: ${m.fork.recommended}`,
+    )
+    .join('\n\n')
+}
+
+function parseRelationshipResponse(raw: string): { kind: RelationshipKind; explanation: string } | null {
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const o = parsed as Record<string, unknown>
+  const validKinds: RelationshipKind[] = ['agreement', 'complementary', 'tension', 'contradiction']
+  if (typeof o.kind !== 'string' || !validKinds.includes(o.kind as RelationshipKind)) return null
+  if (typeof o.explanation !== 'string' || !o.explanation) return null
+  return { kind: o.kind as RelationshipKind, explanation: o.explanation }
+}
+
+/**
+ * Classify relationships for every DecisionGroup that involves 2+ distinct
+ * specialists. Groups with a single member, or multiple members from the
+ * SAME specialist, are skipped entirely — there is no cross-specialist
+ * relationship to classify, and no model call is made for them (fully
+ * deterministic for that case, and no invented relationship). Runs the
+ * independent classification calls concurrently — same concurrency
+ * discipline as the Planner (Epic 2.3B); Promise.all's returned order
+ * matches input order, used here only for determinism, never as rank.
+ * Never throws: an unparseable or errored classification is omitted for
+ * that group only.
+ */
+export async function classifyRelationships(
+  decisionGroups: DecisionGroup[],
+  model: string,
+): Promise<Relationship[]> {
+  const eligible = decisionGroups.filter((g) => new Set(g.members.map((m) => m.skillId)).size >= 2)
+
+  const results = await Promise.all(
+    eligible.map(async (group): Promise<Relationship | null> => {
+      let raw: string
+      try {
+        raw = await complete({
+          model,
+          system: RELATIONSHIP_SYSTEM,
+          user: renderGroupForClassification(group),
+          maxTokens: 512,
+        })
+      } catch {
+        return null
+      }
+      const parsed = parseRelationshipResponse(raw)
+      if (!parsed) return null
+      const skillIds = [...new Set(group.members.map((m) => m.skillId))]
+      return { kind: parsed.kind, skillIds, decisionGroupLabel: group.label, explanation: parsed.explanation }
+    }),
+  )
+
+  return results.filter((r): r is Relationship => r !== null)
+}
+
+/**
+ * synthesize() + classifyRelationships(), composed. synthesize() itself is
+ * completely unchanged by this — this only adds the new step after it runs.
+ */
+export async function synthesizeWithRelationships(
+  results: SkillResult[],
+  model: string,
+): Promise<SynthesisResultWithRelationships> {
+  const base = synthesize(results)
+  const relationships = await classifyRelationships(base.decisionGroups, model)
+  return { ...base, relationships }
 }
