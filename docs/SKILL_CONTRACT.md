@@ -101,6 +101,14 @@ contract:
 The orchestration layer holds a list of providers and merges their results;
 it never holds a path, a URL, or any provider-specific detail.
 
+**Merging multiple providers is implemented as of Epic 2.11** — see
+`src/direction/skills/compose.ts`'s `CompositeSkillProvider`, and
+`docs/EXTERNAL_SKILLS.md` for the duplicate-id policy and provider-failure
+behavior it defines. `CompositeSkillProvider` itself satisfies the exact
+`SkillProvider` interface above, so the orchestration layer (the Planner)
+continues to hold nothing but "a `SkillProvider`" — composition is fully
+invisible to it.
+
 ## The first implementation: `LocalDirectoryProvider`
 
 Backed by the local filesystem internally, but that fact is not visible
@@ -119,8 +127,9 @@ at this layer.
 - How a skill's procedure is actually invoked (the Skill Runner's job).
 - How candidates are narrowed down for a specific goal (the mechanical
   matcher's job).
-- How multiple providers' results are merged or de-duplicated by id (the
-  orchestration layer's job, once more than one provider exists).
+- How multiple providers' results are merged or de-duplicated by id —
+  answered by `docs/EXTERNAL_SKILLS.md` as of Epic 2.11, not by this
+  document.
 
 This document only answers: what is a skill package, and what does listing
 the available ones look like.

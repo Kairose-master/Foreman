@@ -26,6 +26,18 @@ export interface SkillDescriptor {
   description: string
   /** Where the package lives, so a later stage can read SKILL.md's full body. */
   path: string
+  /**
+   * Which provider originally produced this descriptor (Epic 2.11, external
+   * skill loading) — e.g. "bundled" or "external:<root-path>". Optional and
+   * additive: every provider written before Epic 2.11 (including this
+   * file's own `LocalDirectoryProvider`) still returns descriptors without
+   * it, and every existing consumer keys off `id` alone, unaffected. Set
+   * only by providers that participate in composition (`composeProviders`,
+   * in provider-compose.ts) so a merged result can still show which
+   * provider a given skill came from, without requiring every standalone
+   * provider to know about attribution.
+   */
+  source?: string
 }
 
 /**
