@@ -15,11 +15,10 @@
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Fork } from '../../types.js'
 import { complete } from '../../llm.js'
 import type { SkillDescriptor } from './discover.js'
 import type { SkillFinding, SkillInput, SkillResult } from './contract.js'
-import { parseFencedJson } from './json-response.js'
+import { validateSkillResponseShape } from './response-shape.js'
 
 /** Strip the frontmatter block, if present, and return the procedure body. */
 function stripFrontmatter(raw: string): string {
@@ -61,55 +60,6 @@ the shape of the outcome, never "which file" or "what to name it".
 --- YOUR PROCEDURE ---
 `
 
-function asStringArray(v: unknown): string[] {
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
-}
-
-function normalizeForkOption(raw: unknown, index: number): Fork['options'][number] | null {
-  if (typeof raw !== 'object' || raw === null) return null
-  const o = raw as Record<string, unknown>
-  const id = typeof o.id === 'string' && o.id ? o.id : String.fromCharCode(97 + index)
-  const label = typeof o.label === 'string' && o.label ? o.label : id
-  const tradeoff = typeof o.tradeoff === 'string' ? o.tradeoff : ''
-  return { id, label, tradeoff }
-}
-
-function normalizeFork(raw: unknown, index: number): Fork | null {
-  if (typeof raw !== 'object' || raw === null) return null
-  const o = raw as Record<string, unknown>
-  const optionsRaw = Array.isArray(o.options) ? o.options : []
-  const options = optionsRaw
-    .map((op, i) => normalizeForkOption(op, i))
-    .filter((x): x is Fork['options'][number] => x !== null)
-  if (options.length < 2) return null
-  const id = typeof o.id === 'string' && o.id ? o.id : `fork-${index + 1}`
-  const question = typeof o.question === 'string' && o.question ? o.question : 'Which way?'
-  const recommended = options.some((op) => op.id === o.recommended)
-    ? (o.recommended as string)
-    : options[0]!.id
-  return { id, question, options, recommended, shapeChanging: true }
-}
-
-/**
- * Parse a skill's raw response. Returns null (never throws) on anything that
- * isn't well-formed JSON with a boolean `relevant` field — the caller turns a
- * null into an explicit 'unparseable' result, distinct from 'not-relevant'.
- */
-function parseSkillResponse(
-  raw: string,
-): { relevant: boolean; summary: string; concerns: string[]; forks: Fork[] } | null {
-  const parsed = parseFencedJson(raw)
-  if (parsed === null || typeof parsed !== 'object') return null
-  const o = parsed as Record<string, unknown>
-  if (typeof o.relevant !== 'boolean') return null
-  const summary = typeof o.summary === 'string' ? o.summary : ''
-  const concerns = asStringArray(o.concerns)
-  const forks = (Array.isArray(o.forks) ? o.forks : [])
-    .map((f, i) => normalizeFork(f, i))
-    .filter((f): f is Fork => f !== null)
-  return { relevant: o.relevant, summary, concerns, forks }
-}
-
 /**
  * Invoke one skill against the shared input. Never throws — every failure
  * mode (load failure, model-call failure, unparseable response) returns an
@@ -144,8 +94,8 @@ export async function runSkill(
     return { kind: 'invocation-failed', skillId: descriptor.id, reason: (err as Error).message }
   }
 
-  const parsed = parseSkillResponse(raw)
-  if (!parsed) {
+  const validation = validateSkillResponseShape(raw)
+  if (!validation.ok) {
     return {
       kind: 'unparseable',
       skillId: descriptor.id,
@@ -153,6 +103,7 @@ export async function runSkill(
       raw,
     }
   }
+  const parsed = validation.value
 
   if (!parsed.relevant) {
     return {

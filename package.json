@@ -7,6 +7,11 @@
   "bin": {
     "foreman": "./dist/cli.js"
   },
+  "exports": {
+    ".": "./dist/sdk.js",
+    "./sdk": "./dist/sdk.js"
+  },
+  "types": "./dist/sdk.d.ts",
   "engines": {
     "node": ">=20"
   },
