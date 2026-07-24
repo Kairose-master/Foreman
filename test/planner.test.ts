@@ -97,16 +97,25 @@ describe('runPlanner', () => {
 
   it('runs candidates concurrently, not sequentially', async () => {
     const DELAY_MS = 60
+    const callStarts: number[] = []
     mockComplete.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(RELEVANT_RESPONSE), DELAY_MS)),
+      () =>
+        new Promise((resolve) => {
+          callStarts.push(Date.now())
+          setTimeout(() => resolve(RELEVANT_RESPONSE), DELAY_MS)
+        }),
     )
     const provider = new LocalDirectoryProvider(SKILLS_DIR)
-    const start = Date.now()
     await runPlanner('add rate limiting to the API', REPO_DIR, [], provider, 'claude-haiku-4-5')
-    const elapsed = Date.now() - start
-    // Two candidates each with a DELAY_MS mock. Sequential would take ~2x;
-    // concurrent should stay well under that.
-    expect(elapsed).toBeLessThan(DELAY_MS * 1.8)
+    // Sequential execution would only start the second candidate's call
+    // after the first's DELAY_MS resolves; concurrent execution starts both
+    // right away. Compare the gap between call starts, not total wall-clock
+    // duration — the latter also includes unrelated fixture I/O (discovery,
+    // reading SKILL.md files) and was flaky under slow filesystems (e.g.
+    // WSL's /mnt/c) where that I/O alone can exceed the old threshold even
+    // though the calls themselves ran concurrently. See ADR-0001.
+    expect(callStarts).toHaveLength(2)
+    expect(callStarts[1]! - callStarts[0]!).toBeLessThan(DELAY_MS)
   })
 
   it('never retries — each candidate is called exactly once, even on failure', async () => {
