@@ -56,9 +56,43 @@ you get back: passing work + a diff + what it cost + a signed proof
 
 ## Quick start
 
+### Install the CLI globally
+
 ```bash
-npm install
+npm install -g @kairose-master/foreman
 export ANTHROPIC_API_KEY=sk-ant-...      # or `ant auth login`
+foreman "add rate limiting to the API" --dir /path/to/your/repo
+```
+
+### Or run it without installing (npx)
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+npx @kairose-master/foreman "add rate limiting to the API" --dir /path/to/your/repo
+npx @kairose-master/foreman --help
+```
+
+### Or use it as a library (SDK)
+
+To author a skill or import Foreman's public types programmatically instead
+of using the CLI, add it as a dependency and import from the `/sdk` entry
+point — see [`docs/SKILL_SDK.md`](docs/SKILL_SDK.md):
+
+```bash
+npm install @kairose-master/foreman
+```
+
+```ts
+import { defineSkill } from '@kairose-master/foreman/sdk'
+```
+
+### Or run from source (contributing to Foreman itself)
+
+```bash
+git clone https://github.com/Kairose-master/Foreman.git
+cd Foreman
+npm install
+export ANTHROPIC_API_KEY=sk-ant-...
 npm run foreman -- "add rate limiting to the API" --dir /path/to/your/repo
 ```
 

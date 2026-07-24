@@ -1,9 +1,28 @@
 {
-  "name": "foreman",
+  "name": "@kairose-master/foreman",
   "version": "0.1.0",
-  "private": true,
   "description": "An autonomous coder that argues about direction and shuts up about execution. A direction-first harness over the Claude Agent SDK, standing on the Ledgermind trust engine.",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kairose-master/Foreman.git"
+  },
+  "homepage": "https://github.com/Kairose-master/Foreman#readme",
+  "bugs": {
+    "url": "https://github.com/Kairose-master/Foreman/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "autonomous-agent",
+    "coding-agent",
+    "claude",
+    "claude-agent-sdk",
+    "automation",
+    "developer-tools"
+  ],
   "bin": {
     "foreman": "./dist/cli.js"
   },
@@ -12,15 +31,26 @@
     "./sdk": "./dist/sdk.js"
   },
   "types": "./dist/sdk.d.ts",
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "foreman": "tsx src/cli.ts",
+    "clean": "rm -rf dist",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run clean && npm run build && npm run typecheck && npm test"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
