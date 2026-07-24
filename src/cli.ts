@@ -7,6 +7,7 @@ import { createEngine } from './engine/index.js'
 import { run } from './foreman.js'
 import { printReport } from './interaction/report.js'
 import { hasCredentials } from './llm.js'
+import { dispatchSubcommand, SUBCOMMANDS, SUBCOMMAND_HELP } from './cli/router.js'
 
 function fail(message: string, code: number): never {
   process.stderr.write(message + '\n')
@@ -16,8 +17,17 @@ function fail(message: string, code: number): never {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   if (argv.length === 0 || argv.includes('-h') || argv.includes('--help')) {
-    process.stdout.write(HELP)
+    process.stdout.write(HELP + '\n' + SUBCOMMAND_HELP)
     process.exit(argv.length === 0 ? 1 : 0)
+  }
+
+  // Epic 2.12: `skills`, `plan`, `inspect` are subcommands of the
+  // skills-only direction pipeline, dispatched separately from the
+  // existing full-run `foreman "<goal>"` behavior below, which is
+  // completely unchanged for every other invocation.
+  if (SUBCOMMANDS.includes(argv[0] as (typeof SUBCOMMANDS)[number])) {
+    const code = await dispatchSubcommand(argv)
+    process.exit(code)
   }
 
   let config

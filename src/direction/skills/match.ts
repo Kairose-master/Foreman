@@ -65,3 +65,42 @@ export function filterCandidates(goal: string, skills: SkillDescriptor[]): Skill
   if (goalTokens.length === 0) return skills
   return skills.filter((s) => overlaps(goalTokens, tokenize(`${s.name} ${s.description}`)))
 }
+
+/** One skill's match outcome plus the actual overlapping tokens, for a
+ * human/CLI-facing "why did/didn't this match" explanation (Epic 2.12,
+ * `foreman inspect`). Not used by the Planner — orchestration only ever
+ * needs the boolean-shaped `filterCandidates` result above; this exists
+ * purely as an inspection aid layered on the exact same logic. */
+export interface CandidateExplanation {
+  skill: SkillDescriptor
+  matched: boolean
+  /** Empty when `goal` yielded no usable tokens (every skill matches
+   * trivially in that case, per filterCandidates' own no-tokens rule) or
+   * when nothing overlapped. */
+  overlappingTokens: string[]
+}
+
+/**
+ * Explain, per skill, whether and why it would survive `filterCandidates`
+ * for this goal. `matched` is derived by calling `filterCandidates` itself
+ * (a single-skill list) — never a re-derived boolean — so it can never
+ * silently drift from the real filtering behavior above.
+ */
+export function explainCandidates(goal: string, skills: SkillDescriptor[]): CandidateExplanation[] {
+  const goalTokens = tokenize(goal)
+  const goalTokenSet = new Set(goalTokens)
+  return skills.map((s) => {
+    const matched = filterCandidates(goal, [s]).length === 1
+    if (goalTokens.length === 0) return { skill: s, matched, overlappingTokens: [] }
+    const descTokens = new Set(tokenize(`${s.name} ${s.description}`))
+    const overlappingTokens = [...goalTokenSet].filter((g) => {
+      if (descTokens.has(g)) return true
+      if (g.length < 4) return false
+      for (const d of descTokens) {
+        if (d.length >= 4 && (d.includes(g) || g.includes(d))) return true
+      }
+      return false
+    })
+    return { skill: s, matched, overlappingTokens }
+  })
+}

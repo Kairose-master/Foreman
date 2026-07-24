@@ -79,6 +79,47 @@ Common flags:
 
 `foreman --help` lists them all.
 
+## Skills pipeline CLI
+
+Alongside the full `foreman "<goal>"` run above, four subcommands let you
+inspect and run the **direction-only skills pipeline** (Planner → matched
+specialist Skills → Synthesizer) on its own, without executing anything —
+see [`docs/SKILL_CONTRACT.md`](docs/SKILL_CONTRACT.md),
+[`docs/SKILL_SDK.md`](docs/SKILL_SDK.md), and
+[`docs/EXTERNAL_SKILLS.md`](docs/EXTERNAL_SKILLS.md) for the underlying
+concepts.
+
+```bash
+# See every discovered skill (bundled + any external ones you've configured)
+foreman skills list
+
+# Same, machine-readable
+foreman skills list --json
+
+# Add a local external skill directory alongside the bundled ones
+foreman skills list --skills-path ./my-skills
+
+# Validate every skill package's manifest; non-zero exit on any invalid one
+foreman skills validate
+foreman skills validate --strict   # also fail loudly if a provider path can't be read
+
+# See which skills WOULD be asked about a goal, and why — no model call
+foreman inspect "add rate limiting to the API"
+
+# Run the real pipeline: match candidates, invoke each, synthesize the result
+foreman plan "add rate limiting to the API"
+foreman plan "add rate limiting to the API" --json
+```
+
+Shared flags: `--dir/-C <path>`, `--skills-path <path>` (repeatable),
+`--no-bundled`, `--duplicate-policy <reject|first-wins|last-wins>`,
+`--strict`, `--model <id>`, `--json`. `foreman --help` prints the full list.
+
+`plan`'s output always shows the real verdict, decision groups,
+relationships (agreement/complementary/tension/contradiction), specialist
+attribution, and any disclosed failures — never hidden or filtered for
+cleaner output.
+
 ## Architecture at a glance
 
 Foreman is two layers:
@@ -104,14 +145,19 @@ escrow, on-chain, the marketplace — stays invisible to the harness.
 foreman/
 ├── engine/ledgermind/     ← git submodule: grading · budget · proof · reputation
 ├── src/                   ← the harness (Agent SDK wrapper + direction layer)
-│   ├── cli.ts             ← entry point: parse args, run, report
+│   ├── cli.ts             ← entry point: parse args, run, report, subcommand dispatch
+│   ├── cli/               ← skills-pipeline subcommands (list/validate/plan/inspect)
+│   ├── sdk.ts             ← public Skill SDK (foreman/sdk) — author a skill without internals
 │   ├── foreman.ts         ← the run loop (propose → approve → execute → grade → prove)
 │   ├── config.ts          ← env + defaults (model, budget, dial, engine)
 │   ├── types.ts           ← shared types
 │   ├── direction/         ← goal → approach proposal; the involvement dial
+│   │   └── skills/        ← Planner, Skill Runner, matcher, Synthesizer, providers
 │   ├── execution/         ← drive the Agent SDK, track budget, collect the diff
 │   ├── engine/            ← the four-call seam + LocalEngine + LedgermindEngine
 │   └── interaction/       ← CLI prompts + the final report
+├── skills/                ← bundled specialist skills (research, architecture, security)
+├── examples/              ← worked examples (e.g. an SDK-authored external-style skill)
 ├── test/                  ← vitest unit tests for the pure logic
 ├── docs/
 │   ├── VISION.md          ← why: the convenience/expertise-gap bet

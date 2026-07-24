@@ -40,60 +40,14 @@
 import type { Fork, ForkOption } from './types.js'
 import type { SkillFinding, SkillInput, SkillResult } from './direction/skills/contract.js'
 import { validateSkillResponseShape, type ParsedSkillResponse } from './direction/skills/response-shape.js'
+import {
+  validateSkillManifest,
+  type SkillManifest,
+  type SkillManifestValidation,
+} from './direction/skills/manifest.js'
 
 export type { Fork, ForkOption, SkillFinding, SkillInput, SkillResult, ParsedSkillResponse }
-
-/** A skill's identity + matching metadata + procedure — the authoring-time
- * shape. Maps 1:1 onto SKILL.md's required frontmatter fields
- * (id/name/description) plus the procedure body; see docs/SKILL_CONTRACT.md. */
-export interface SkillManifest {
-  /** Stable, unique id. Lowercase, hyphenated (e.g. "performance-review"). */
-  id: string
-  /** Short human label (e.g. "Performance Review"). */
-  name: string
-  /** One line. This is the ONLY field the mechanical candidate matcher uses
-   * — keep it specific to the domain, not generic marketing copy. */
-  description: string
-  /** The procedure body: what this skill does when invoked, including its
-   * own self-relevance check as the first instruction. Read verbatim by the
-   * Skill Runner — never parsed, templated, or special-cased. */
-  procedure: string
-}
-
-export type SkillManifestValidation =
-  | { ok: true }
-  | { ok: false; errors: string[] }
-
-const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
-
-/**
- * Validate a manifest against the same required-field rules discovery
- * silently enforces (docs/SKILL_CONTRACT.md): non-empty id/name/description,
- * a non-empty procedure, and an id shaped like the lowercase-hyphenated
- * convention every bundled skill already follows. Returns every violation
- * found, not just the first — an author fixing a manifest by hand benefits
- * from seeing the whole list at once.
- */
-export function validateSkillManifest(manifest: Partial<SkillManifest>): SkillManifestValidation {
-  const errors: string[] = []
-  if (!manifest.id || !manifest.id.trim()) {
-    errors.push('"id" is required and must be non-empty')
-  } else if (!ID_PATTERN.test(manifest.id)) {
-    errors.push(`"id" must be lowercase, hyphenated (e.g. "performance-review"), got ${JSON.stringify(manifest.id)}`)
-  }
-  if (!manifest.name || !manifest.name.trim()) {
-    errors.push('"name" is required and must be non-empty')
-  }
-  if (!manifest.description || !manifest.description.trim()) {
-    errors.push('"description" is required and must be non-empty')
-  } else if (manifest.description.includes('\n')) {
-    errors.push('"description" must be a single line (used verbatim for candidate matching)')
-  }
-  if (!manifest.procedure || !manifest.procedure.trim()) {
-    errors.push('"procedure" is required and must be non-empty')
-  }
-  return errors.length ? { ok: false, errors } : { ok: true }
-}
+export { validateSkillManifest, type SkillManifest, type SkillManifestValidation }
 
 function yamlEscape(value: string): string {
   // Only quote when the value contains a character that would otherwise
