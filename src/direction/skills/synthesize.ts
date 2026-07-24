@@ -40,6 +40,7 @@
 import type { Fork } from '../../types.js'
 import type { SkillResult } from './contract.js'
 import { complete } from '../../llm.js'
+import { parseFencedJson } from './json-response.js'
 
 export interface DecisionGroupMember {
   skillId: string
@@ -309,14 +310,8 @@ function renderGroupForClassification(group: DecisionGroup): string {
 }
 
 function parseRelationshipResponse(raw: string): { kind: RelationshipKind; explanation: string } | null {
-  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
-  if (typeof parsed !== 'object' || parsed === null) return null
+  const parsed = parseFencedJson(raw)
+  if (parsed === null || typeof parsed !== 'object') return null
   const o = parsed as Record<string, unknown>
   const validKinds: RelationshipKind[] = ['agreement', 'complementary', 'tension', 'contradiction']
   if (typeof o.kind !== 'string' || !validKinds.includes(o.kind as RelationshipKind)) return null

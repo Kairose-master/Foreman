@@ -19,6 +19,7 @@ import type { Fork } from '../../types.js'
 import { complete } from '../../llm.js'
 import type { SkillDescriptor } from './discover.js'
 import type { SkillFinding, SkillInput, SkillResult } from './contract.js'
+import { parseFencedJson } from './json-response.js'
 
 /** Strip the frontmatter block, if present, and return the procedure body. */
 function stripFrontmatter(raw: string): string {
@@ -97,14 +98,8 @@ function normalizeFork(raw: unknown, index: number): Fork | null {
 function parseSkillResponse(
   raw: string,
 ): { relevant: boolean; summary: string; concerns: string[]; forks: Fork[] } | null {
-  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    return null
-  }
-  if (typeof parsed !== 'object' || parsed === null) return null
+  const parsed = parseFencedJson(raw)
+  if (parsed === null || typeof parsed !== 'object') return null
   const o = parsed as Record<string, unknown>
   if (typeof o.relevant !== 'boolean') return null
   const summary = typeof o.summary === 'string' ? o.summary : ''

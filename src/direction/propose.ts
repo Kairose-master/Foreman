@@ -12,6 +12,7 @@ import type { Approach, Fork } from '../types.js'
 import { DEFAULT_BUDGET_USD } from '../config.js'
 import { complete } from '../llm.js'
 import { renderRepoContext, type RepoContext } from './repo-context.js'
+import { parseFencedJson } from './skills/json-response.js'
 
 export const PROPOSAL_SYSTEM = `You are the direction layer of an autonomous coding harness. A user gives you a
 goal for a real repository. Do NOT write code and do NOT ask about keystrokes.
@@ -88,14 +89,9 @@ function normalizeFork(raw: unknown, index: number): Fork | null {
  * text isn't JSON at all.
  */
 export function parseProposal(raw: string): Approach {
-  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    throw new Error('planner did not return JSON')
-  }
-  if (typeof parsed !== 'object' || parsed === null) throw new Error('planner returned a non-object')
+  const parsed = parseFencedJson(raw)
+  if (parsed === null) throw new Error('planner did not return JSON')
+  if (typeof parsed !== 'object') throw new Error('planner returned a non-object')
   const o = parsed as Record<string, unknown>
 
   const steps = Array.isArray(o.steps) ? o.steps.map((s) => asString(s)).filter(Boolean) : []
