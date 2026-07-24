@@ -16,8 +16,8 @@
  *      never knows which provider (local/bundled/git/registry) it's talking to.
  *   3. Narrow candidates via the mechanical filter from match.ts. The
  *      Planner performs no semantic judgment of its own here.
- *   4. Run every narrowed candidate through runSkill, concurrently, and
- *      return the raw results — uninterpreted. This file never inspects,
+ *   4. Run every narrowed candidate through runSkill, bounded-concurrently,
+ *      and return the raw results — uninterpreted. This file never inspects,
  *      ranks, scores, or reacts differently to what a SkillResult contains;
  *      it does not even branch on `result.kind`.
  *
@@ -27,12 +27,24 @@
  * its own contract (Epic 2.2) — the wrapper below exists so that guarantee
  * holds by this file's own construction, not merely because a callee
  * currently behaves well.
+ *
+ * Step 4 uses `mapLimit` (Epic 2.9 hardening ADR) instead of a bare
+ * `Promise.all` — a concurrency ceiling, not a cost-ledger. See the ADR
+ * (docs/ folder) for why a ceiling was added now and a real budget-ledger
+ * integration deliberately was not.
  */
 import { gatherRepoContext, renderRepoContext } from '../repo-context.js'
 import { filterCandidates } from './match.js'
 import { runSkill } from './run-skill.js'
+import { mapLimit } from './concurrency.js'
 import type { SkillDescriptor, SkillProvider } from './discover.js'
 import type { SkillInput, SkillResult } from './contract.js'
+
+/** Default cap on concurrently in-flight skill invocations per planner run.
+ * See the Epic 2.9 hardening ADR for rationale (chosen as a conservative
+ * ceiling well above today's 3-skill bundled library, not a cost/spend
+ * control). */
+export const DEFAULT_SKILL_CONCURRENCY = 5
 
 export interface PlannerResult {
   packet: SkillInput
@@ -60,6 +72,7 @@ export async function runPlanner(
   reputationHints: string[],
   provider: SkillProvider,
   model: string,
+  concurrency: number = DEFAULT_SKILL_CONCURRENCY,
 ): Promise<PlannerResult> {
   // 1. Normalize.
   const ctx = await gatherRepoContext(dir)
@@ -71,9 +84,9 @@ export async function runPlanner(
   // 3. Narrow. Mechanical only — no judgment performed here.
   const candidates = filterCandidates(goal, all)
 
-  // 4. Run every candidate concurrently. No sequencing beyond awaiting
-  // completion; no retries; results returned uninterpreted.
-  const results = await Promise.all(candidates.map((c) => safeRunSkill(c, packet, model)))
+  // 4. Run every candidate, capped at `concurrency` in flight. No retries;
+  // results returned uninterpreted, in input order (never a rank).
+  const results = await mapLimit(candidates, concurrency, (c) => safeRunSkill(c, packet, model))
 
   return { packet, results }
 }
