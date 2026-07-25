@@ -7,11 +7,19 @@ function delay<T>(ms: number, value: T): Promise<T> {
 
 describe('mapLimit', () => {
   it('runs everything in parallel when limit >= item count', async () => {
-    const start = Date.now()
-    const result = await mapLimit([1, 2, 3], 3, (n) => delay(50, n * 10))
-    const elapsed = Date.now() - start
+    // Overlap, not elapsed time — same technique as the limit test below. A
+    // wall-clock bound turns a slow or loaded machine into a false failure.
+    let inFlight = 0
+    let maxInFlight = 0
+    const result = await mapLimit([1, 2, 3], 3, async (n) => {
+      inFlight++
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      await delay(20, n)
+      inFlight--
+      return n * 10
+    })
     expect(result).toEqual([10, 20, 30])
-    expect(elapsed).toBeLessThan(50 * 2.5) // well under sequential (150ms), generous margin
+    expect(maxInFlight).toBe(3) // all three open at once — no serialization
   })
 
   it('never exceeds the concurrency limit', async () => {

@@ -96,17 +96,30 @@ describe('runPlanner', () => {
   })
 
   it('runs candidates concurrently, not sequentially', async () => {
-    const DELAY_MS = 60
+    // Observe OVERLAP, not wall-clock time: count how many invocations are open
+    // at once. A wall-clock threshold is flaky — on a loaded machine
+    // "concurrent + overhead" drifts into the sequential band, and this gate
+    // once failed by a single millisecond (109ms vs a 108ms bound).
+    let inFlight = 0
+    let maxInFlight = 0
     mockComplete.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(RELEVANT_RESPONSE), DELAY_MS)),
+      () =>
+        new Promise((resolve) => {
+          inFlight++
+          maxInFlight = Math.max(maxInFlight, inFlight)
+          setTimeout(() => {
+            inFlight--
+            resolve(RELEVANT_RESPONSE)
+          }, 20)
+        }),
     )
     const provider = new LocalDirectoryProvider(SKILLS_DIR)
-    const start = Date.now()
-    await runPlanner('add rate limiting to the API', REPO_DIR, [], provider, 'claude-haiku-4-5')
-    const elapsed = Date.now() - start
-    // Two candidates each with a DELAY_MS mock. Sequential would take ~2x;
-    // concurrent should stay well under that.
-    expect(elapsed).toBeLessThan(DELAY_MS * 1.8)
+    const result = await runPlanner('add rate limiting to the API', REPO_DIR, [], provider, 'claude-haiku-4-5')
+
+    expect(result.results).toHaveLength(2)
+    // Both candidates were open at the same instant — impossible if the planner
+    // awaited them one after another, and independent of how fast the box is.
+    expect(maxInFlight).toBeGreaterThanOrEqual(2)
   })
 
   it('never retries — each candidate is called exactly once, even on failure', async () => {
