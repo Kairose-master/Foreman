@@ -7,6 +7,23 @@ import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
 import type { Approach, DirectionDecision, Fork } from '../types.js'
 
+/** One fork as a readable block: the question, then every option + tradeoff. */
+export function renderFork(fork: Fork, index: number): string {
+  const out: string[] = [`\n(${index + 1}) ${fork.question}`]
+  for (const opt of fork.options) {
+    const star = opt.id === fork.recommended ? ' ← recommended' : ''
+    const tradeoff = opt.tradeoff ? ` — ${opt.tradeoff}` : ''
+    out.push(`    [${opt.id}] ${opt.label}${tradeoff}${star}`)
+  }
+  return out.join('\n')
+}
+
+/**
+ * The proposal as the user sees it. Surfaced forks are rendered INLINE: they are
+ * the whole point of the check-in, and --dry-run / --yes never reach the
+ * interactive loop below — so announcing "1 fork I want your call on:" without
+ * showing the fork is the one thing this must not do.
+ */
 export function renderProposal(approach: Approach, surfaced: Fork[]): string {
   const out: string[] = []
   out.push('\n─ Approach ─────────────────────────────────────────')
@@ -19,19 +36,11 @@ export function renderProposal(approach: Approach, surfaced: Fork[]): string {
   out.push(`Acceptance: ${approach.spec}`)
   if (surfaced.length) {
     out.push(`\n${surfaced.length} fork${surfaced.length === 1 ? '' : 's'} I want your call on:`)
+    surfaced.forEach((fork, i) => out.push(renderFork(fork, i)))
   } else if (approach.forks.length) {
     out.push('\n(No forks to surface at this dial — going with the recommended calls.)')
   }
   out.push('────────────────────────────────────────────────────')
-  return out.join('\n')
-}
-
-function renderFork(fork: Fork, index: number): string {
-  const out: string[] = [`\n(${index + 1}) ${fork.question}`]
-  for (const opt of fork.options) {
-    const star = opt.id === fork.recommended ? ' ← recommended' : ''
-    out.push(`    [${opt.id}] ${opt.label} — ${opt.tradeoff}${star}`)
-  }
   return out.join('\n')
 }
 
@@ -44,12 +53,15 @@ export async function collectDecision(approach: Approach, surfaced: Fork[]): Pro
   try {
     stdout.write(renderProposal(approach, surfaced) + '\n')
 
+    // renderProposal already listed every surfaced fork, so ask only — and name
+    // the fork in the prompt so multi-fork runs stay unambiguous.
     const forkChoices: Record<string, string> = {}
     for (let i = 0; i < surfaced.length; i++) {
       const fork = surfaced[i]!
-      stdout.write(renderFork(fork, i) + '\n')
       const valid = fork.options.map((o) => o.id)
-      const answer = (await rl.question(`  choose [${valid.join('/')}] (default ${fork.recommended}): `)).trim()
+      const answer = (
+        await rl.question(`\n  (${i + 1}) choose [${valid.join('/')}] (default ${fork.recommended}): `)
+      ).trim()
       forkChoices[fork.id] = valid.includes(answer) ? answer : fork.recommended
     }
 
