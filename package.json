@@ -1,7 +1,6 @@
 {
-  "name": "foreman",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@kairose-master/foreman",
+  "version": "0.1.1",
   "description": "An autonomous coder that argues about direction and shuts up about execution. A direction-first harness over the Claude Agent SDK, standing on the Ledgermind trust engine.",
   "type": "module",
   "bin": {
@@ -12,6 +11,19 @@
     "./sdk": "./dist/sdk.js"
   },
   "types": "./dist/sdk.d.ts",
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kairose-master/Foreman.git"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -20,7 +32,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
