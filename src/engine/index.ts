@@ -18,7 +18,7 @@ export function createEngine(config: Config, env: NodeJS.ProcessEnv = process.en
     return new LedgermindEngine({
       ...common,
       ledgermindUrl: env.LEDGERMIND_URL,
-      gradeUrl: env.FOREMAN_LEDGERMIND_GRADE_URL,
+      token: env.LEDGERMIND_TOKEN,
     })
   }
   return new LocalEngine(common)
