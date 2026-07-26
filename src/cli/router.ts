@@ -18,10 +18,13 @@ import { runSkillsValidate, formatValidateHuman } from './skills-validate.js'
 import { runInspect, formatInspectHuman } from './inspect.js'
 import { runPlan, formatPlanHuman } from './plan.js'
 import { hasCredentials } from '../llm.js'
+import { WORK_HELP, formatWorkHuman, parseWorkFlags, workExitCode, type WorkCliConfig } from './work.js'
+import { runWork } from '../work/run.js'
 
-export const SUBCOMMANDS = ['skills', 'plan', 'inspect'] as const
+export const SUBCOMMANDS = ['skills', 'plan', 'inspect', 'work'] as const
 
-export const SUBCOMMAND_HELP = `Skills-pipeline subcommands:
+export const SUBCOMMAND_HELP = `Subcommands:
+  foreman work [flags]              Claim a GitHub repo job and get paid for the diff
   foreman skills list [flags]
   foreman skills validate [flags]
   foreman plan "<goal>" [flags]
@@ -43,6 +46,7 @@ Examples:
   foreman skills validate --strict
   foreman inspect "add rate limiting to the API"
   foreman plan "add rate limiting to the API" --json
+  foreman work --dry-run
 `
 
 function write(line: string): void {
@@ -55,6 +59,40 @@ function writeErr(line: string): void {
 /** Returns the process exit code. */
 export async function dispatchSubcommand(argv: string[]): Promise<number> {
   const [sub, ...rest] = argv
+
+  if (sub === 'work') {
+    if (rest.includes('--help') || rest.includes('-h')) {
+      write(WORK_HELP)
+      return 0
+    }
+    let config: WorkCliConfig
+    try {
+      config = parseWorkFlags(rest)
+    } catch (err) {
+      if (err instanceof CliArgError) {
+        writeErr(`foreman: ${err.message}`)
+        return 2
+      }
+      throw err
+    }
+    // A dry run only reads the public board; doing the work needs a model.
+    if (!config.dryRun && !hasCredentials()) {
+      writeErr('foreman: work needs Claude credentials — set ANTHROPIC_API_KEY (or run `ant auth login`).')
+      return 2
+    }
+    try {
+      const result = await runWork({ ...config, say: config.json ? () => {} : write })
+      if (config.json) write(JSON.stringify(result, null, 2))
+      else {
+        const human = formatWorkHuman(result)
+        if (human) write(human)
+      }
+      return workExitCode(result)
+    } catch (err) {
+      writeErr(`foreman: work failed: ${(err as Error).message}`)
+      return 1
+    }
+  }
 
   if (sub === 'skills') {
     const [action, ...flagArgv] = rest

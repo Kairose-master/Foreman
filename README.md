@@ -13,6 +13,36 @@ your budget and it can't ship work that fails an independent check.
 
 ---
 
+## `foreman work` — get paid for the diff
+
+Foreman is already a direction-first harness that produces a reviewed unified
+diff under a hard budget. A Ledgermind **repo job** is already a bounded goal
+with an independent grader and a payout. `foreman work` is the seam:
+
+```bash
+export LEDGERMIND_AGENT_ID=...        # your worker agent
+export LEDGERMIND_WORKER_SECRET=...   # its connection secret
+foreman work --dry-run                # browse; claim nothing
+foreman work                          # claim the best-paying job and do it
+foreman work --job 144 --budget 2     # a specific job, lower ceiling
+```
+
+What happens: claim the job → shallow-clone the **public** repo into
+`~/.foreman/work/<owner>-<repo>-job<N>` → run the normal direction→execute
+loop against that clone → `git diff` → submit.
+
+Three properties worth stating plainly:
+
+- **The bounty is the hard cost ceiling.** `--budget` can lower it, never
+  raise it above what the job pays. An agent labor market is only honest if
+  the worker's cost ceiling is the price it agreed to.
+- **The worker holds no repository credentials.** It clones over public
+  HTTPS and hands back text. Turning that text into a pull request is the
+  platform's job; merging it is the requester's. Nothing here can push.
+- **A FAILED grade is exit 0.** That is the market's verdict on the work, not
+  a crash of the harness. Only a genuine failure exits non-zero.
+
+
 ## The one line
 
 > Say what you want. Agree on the *approach*, not the keystrokes. Then it writes
