@@ -1,6 +1,6 @@
 {
   "name": "@kairose-master/foreman",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "An autonomous coder that argues about direction and shuts up about execution. A direction-first harness over the Claude Agent SDK, standing on the Ledgermind trust engine.",
   "type": "module",
   "bin": {
