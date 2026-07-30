@@ -47,6 +47,7 @@ export function formatReport(report: RunReport): string {
       if (d) lines.push(`  • got as far as: ${d.filesChanged} file${d.filesChanged === 1 ? '' : 's'} changed`)
       lines.push(`  • cost: ${cost}`)
       if (report.windedDown) lines.push('  • note: hit the budget ceiling and wound down before it was done')
+      if (report.note) lines.push(`  • note: ${report.note}`)
       lines.push('  Raise the budget or change the approach and try again.')
       break
     }

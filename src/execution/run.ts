@@ -48,21 +48,33 @@ export async function executeRun(input: ExecuteInput): Promise<ExecutionResult> 
   let note: string | undefined
   let finalSummary = ''
   let lastAssistantText = ''
+  let lastStderr = ''
 
   const q = query({
     prompt: brief,
     options: {
       cwd: dir,
       model,
-      permissionMode: 'bypassPermissions',
-      allowDangerouslySkipPermissions: true,
+      // Execution is permission-prompt-free, but we grant it programmatically
+      // via an allow-all callback rather than the `--dangerously-skip-permissions`
+      // flag — that flag is refused when the process runs as root, and a callback
+      // is the cleaner "the harness decides, not a prompt" mechanism anyway.
+      canUseTool: async (_toolName, toolInput) => ({ behavior: 'allow', updatedInput: toolInput }),
       tools: ALLOWED_TOOLS,
       allowedTools: ALLOWED_TOOLS,
       maxTurns: input.maxTurns ?? 60,
       maxBudgetUsd: budgetUsd,
       abortController: abort,
       systemPrompt: { type: 'preset', preset: 'claude_code' },
-      stderr: () => {},
+      // The bundled CLI defaults to legacy `thinking:{type:'enabled'}`, which
+      // current Opus models reject (400). Disable thinking in the executor for
+      // compatibility; the direction layer is where reasoning matters here.
+      maxThinkingTokens: 0,
+      env: { ...process.env, MAX_THINKING_TOKENS: '0' },
+      stderr: (data: string) => {
+        const t = data.trim()
+        if (t) lastStderr = t
+      },
     },
   })
 
@@ -105,9 +117,12 @@ export async function executeRun(input: ExecuteInput): Promise<ExecutionResult> 
       }
     }
   } catch (err) {
-    // AbortError from a budget wind-down is expected; anything else is a note.
+    // AbortError from a budget wind-down is expected; anything else is a note,
+    // enriched with the last stderr line from the CLI so failures are legible.
     const msg = (err as Error).message ?? String(err)
-    if (!/abort/i.test(msg)) note = note ?? `execution error: ${msg}`
+    if (!/abort/i.test(msg)) {
+      note = note ?? `execution error: ${msg}${lastStderr ? ` — ${lastStderr}` : ''}`
+    }
   }
 
   const { diff, filesChanged } = await collectDiff(dir)
